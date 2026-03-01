@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.room.*
 
 // ==========================================
-// 🚀 ENTIDADES (TABELAS) - MANTIDAS INTEGRALMENTE
+// 🚀 ENTIDADES (TABELAS)
 // ==========================================
 
 @Entity(tableName = "user_profiles")
@@ -68,7 +68,51 @@ data class WatchHistoryEntity(
 )
 
 // ==========================================
-// 🚀 ENGINE DO BANCO (SINGLETON) - ATUALIZADO
+// 🚀 DAO (INTERFACE DE COMANDOS)
+// ==========================================
+
+@Dao
+interface StreamDao {
+    // Gravação em Massa (Para o Login Automático)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLiveStreams(streams: List<LiveStreamEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVodStreams(streams: List<VodEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSeriesStreams(series: List<SeriesEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategories(categories: List<CategoryEntity>)
+
+    // Consultas Rápidas
+    @Query("SELECT * FROM live_streams WHERE category_id = :catId")
+    suspend fun getLiveByCategory(catId: String): List<LiveStreamEntity>
+
+    @Query("SELECT * FROM vod_streams ORDER BY added DESC")
+    suspend fun getAllVods(): List<VodEntity>
+
+    // Limpeza Inteligente (Evita travamentos)
+    @Query("DELETE FROM live_streams")
+    suspend fun clearLive()
+
+    @Query("DELETE FROM vod_streams")
+    suspend fun clearVod()
+
+    @Query("DELETE FROM series_streams")
+    suspend fun clearSeries()
+
+    // Perfis
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProfile(profile: ProfileEntity)
+
+    @Query("SELECT * FROM user_profiles")
+    suspend fun getAllProfiles(): List<ProfileEntity>
+}
+
+// ==========================================
+// 🚀 ENGINE DO BANCO (SINGLETON)
 // ==========================================
 
 @Database(
@@ -80,13 +124,10 @@ data class WatchHistoryEntity(
         WatchHistoryEntity::class,
         ProfileEntity::class
     ], 
-    version = 2, // ✅ Versão 2 para sincronizar com o novo StreamDao.kt
+    version = 1, // Começando como 1 para o novo projeto
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-    
-    // ✅ Removida a interface interna para eliminar o erro de Redeclaração.
-    // O compilador agora buscará o StreamDao no arquivo separado.
     abstract fun streamDao(): StreamDao
 
     companion object {
