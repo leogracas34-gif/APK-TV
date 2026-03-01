@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+    <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
@@ -23,13 +26,14 @@
         android:theme="@style/Theme.VLTVPlay"
         android:networkSecurityConfig="@xml/network_security_config"
         android:launchMode="singleTask"
-        android:resizeableActivity="true"
+        android:resizeableActivity="false"
         tools:targetApi="31">
 
         <activity
             android:name=".LoginActivity"
             android:exported="true"
-            android:screenOrientation="unspecified">
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -41,77 +45,77 @@
             android:name=".HomeActivity"
             android:banner="@mipmap/ic_launcher"
             android:exported="true"
-            android:screenOrientation="unspecified" />
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout" />
 
         <activity
             android:name=".LiveTvActivity"
             android:banner="@mipmap/ic_launcher"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|layoutDirection"
             android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="landscape" />
 
         <activity
             android:name=".PlayerActivity"
             android:banner="@mipmap/ic_launcher"
             android:supportsPictureInPicture="true"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="landscape" />
 
         <activity
             android:name=".VodActivity"
             android:banner="@mipmap/ic_launcher"
-            android:screenOrientation="unspecified" />
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
 
         <activity
             android:name=".DetailsActivity"
             android:banner="@mipmap/ic_launcher"
-            android:screenOrientation="unspecified" />
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
 
         <activity
             android:name=".SeriesActivity"
             android:banner="@mipmap/ic_launcher"
-            android:screenOrientation="unspecified" />
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
 
         <activity
             android:name=".SeriesDetailsActivity"
             android:banner="@mipmap/ic_launcher"
-            android:screenOrientation="unspecified" />
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
 
         <activity
             android:name=".SearchActivity"
             android:banner="@mipmap/ic_launcher"
-            android:screenOrientation="unspecified" />
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
 
         <activity
             android:name=".SettingsActivity"
             android:banner="@mipmap/ic_launcher"
-            android:screenOrientation="unspecified" />
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
 
         <activity
             android:name=".DownloadsActivity"
             android:banner="@mipmap/ic_launcher"
-            android:screenOrientation="unspecified" />
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
 
         <activity
             android:name=".KidsActivity"
             android:banner="@mipmap/ic_launcher"
-            android:screenOrientation="unspecified"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize"
             android:exported="false" />
-
-        <activity
-            android:name=".ProfilesActivity"
-            android:exported="false"
-            android:screenOrientation="sensorPortrait"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
 
         <activity
             android:name=".NovidadesActivity"
-            android:screenOrientation="portrait"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize"
             android:exported="false" />
 
-        <activity
-            android:name=".EditProfileActivity" />
-
-    </application>
-
+        </application>
 </manifest>
