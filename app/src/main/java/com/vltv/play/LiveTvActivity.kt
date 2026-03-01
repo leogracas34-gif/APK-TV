@@ -168,8 +168,7 @@ class LiveTvActivity : AppCompatActivity() {
         }
         rvCategories.adapter = categoryAdapter
         
-        // ✅ CORREÇÃO FINAL: Uso de getOrNull(0) para evitar erro de Integer Literal (Linha 352)
-        // Isso garante que passamos o objeto LiveCategory e não um índice numérico puro.
+        // ✅ CORREÇÃO 1: Uso de getOrNull(0) para evitar o índice numérico direto.
         categorias.getOrNull(0)?.let { primeiraCategoria ->
             carregarCanais(primeiraCategoria)
         }
@@ -177,13 +176,19 @@ class LiveTvActivity : AppCompatActivity() {
 
     private fun carregarCanais(categoria: LiveCategory) {
         tvCategoryTitle.text = categoria.name
-        val catIdStr = categoria.id.toString()
+        
+        // ✅ CORREÇÃO 2: Forçando a ID a ser tratada como String pura para evitar erro na linha 355
+        val catIdStr: String = categoria.id.toString()
 
         // ✅ CARREGAMENTO INSTANTÂNEO DE CANAIS PELO BANCO DE DADOS
         CoroutineScope(Dispatchers.Main).launch {
             val canaisDb = withContext(Dispatchers.IO) {
-                if (catIdStr == "0") streamDao.getAllLiveStreams() 
-                else streamDao.getLiveStreamsByCategory(catIdStr)
+                // Compara usando String explícita "0" para não haver conflito com Integer literal
+                if (catIdStr == "0") {
+                    streamDao.getAllLiveStreams()
+                } else {
+                    streamDao.getLiveStreamsByCategory(catIdStr)
+                }
             }
 
             if (canaisDb.isNotEmpty()) {
