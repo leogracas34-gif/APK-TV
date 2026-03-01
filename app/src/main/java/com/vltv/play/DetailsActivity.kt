@@ -193,7 +193,7 @@ class DetailsActivity : AppCompatActivity() {
                 runOnUiThread { tvTitle.visibility = View.VISIBLE } 
             } 
             override fun onResponse(call: Call, response: Response) { 
-                val body = response.body()?.string() ?: return 
+                val body = response.body?.string() ?: return 
                 try { 
                     val results = JSONObject(body).optJSONArray("results") 
                     if (results != null && results.length() > 0) { 
@@ -226,7 +226,7 @@ class DetailsActivity : AppCompatActivity() {
         val imagesUrl = "https://api.themoviedb.org/3/$type/$id/images?api_key=$key&include_image_language=pt,en,null" 
         client.newCall(Request.Builder().url(imagesUrl).build()).enqueue(object : Callback { 
             override fun onResponse(call: Call, response: Response) { 
-                val body = response.body()?.string() ?: return 
+                val body = response.body?.string() ?: return 
                 try { 
                     val logos = JSONObject(body).optJSONArray("logos") 
                     if (logos != null && logos.length() > 0) { 
@@ -259,7 +259,7 @@ class DetailsActivity : AppCompatActivity() {
         val url = "https://api.themoviedb.org/3/$type/$id?api_key=$key&append_to_response=credits&language=pt-BR" 
         client.newCall(Request.Builder().url(url).build()).enqueue(object : Callback { 
             override fun onResponse(call: Call, response: Response) { 
-                val body = response.body()?.string() ?: return 
+                val body = response.body?.string() ?: return 
                 try { 
                     val d = JSONObject(body) 
                     val gs = d.optJSONArray("genres") 
