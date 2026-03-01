@@ -86,7 +86,16 @@ interface StreamDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategories(categories: List<CategoryEntity>)
 
-    // Consultas Rápidas
+    // Consultas Rápidas (Utilizadas na LiveTvActivity)
+    @Query("SELECT * FROM categories WHERE type = :type")
+    suspend fun getCategoriesByType(type: String): List<CategoryEntity>
+
+    @Query("SELECT * FROM live_streams")
+    suspend fun getAllLiveStreams(): List<LiveStreamEntity>
+
+    @Query("SELECT * FROM live_streams WHERE category_id = :catId")
+    suspend fun getLiveStreamsByCategory(catId: String): List<LiveStreamEntity>
+
     @Query("SELECT * FROM live_streams WHERE category_id = :catId")
     suspend fun getLiveByCategory(catId: String): List<LiveStreamEntity>
 
