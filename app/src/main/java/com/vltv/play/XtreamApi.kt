@@ -1,5 +1,7 @@
 package com.vltv.play
 
+import android.content.Context
+import com.vltv.play.data.VpnInterceptor
 import okhttp3.OkHttpClient
 import retrofit2.Call
 import retrofit2.Retrofit
@@ -117,18 +119,25 @@ interface XtreamService {
 
 object XtreamApi {
     private var retrofit: Retrofit? = null
-    private var baseUrl: String = "http://placeholder.com/" // Iniciamos neutro para aceitar qualquer DNS
+    private var baseUrl: String = "http://placeholder.com/" 
+    private var okHttpClient: OkHttpClient? = null
 
-    // Cliente OkHttp com Timeouts longos para carregar listas grandes sem erro
-    private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .build()
+    /**
+     * Inicializa o cliente com o interceptor de VPN. 
+     * Deve ser chamado uma vez no início do app (Ex: Application ou MainActivity).
+     */
+    fun init(context: Context) {
+        okHttpClient = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .addInterceptor(VpnInterceptor(context)) // Injeta a segurança de VPN
+            .build()
+        retrofit = null // Força recriação para aplicar o novo cliente
+    }
 
     fun setBaseUrl(newUrl: String) {
         val formattedUrl = if (newUrl.endsWith("/")) newUrl else "$newUrl/"
-        // Se o DNS for diferente do atual, resetamos o Retrofit
         if (baseUrl != formattedUrl) {
             baseUrl = formattedUrl
             retrofit = null
@@ -137,11 +146,16 @@ object XtreamApi {
 
     val service: XtreamService get() {
         if (retrofit == null) {
-            retrofit = Retrofit.Builder()
+            val builder = Retrofit.Builder()
                 .baseUrl(baseUrl)
-                .client(okHttpClient) // Preparado para receber o Interceptor de VPN
                 .addConverterFactory(GsonConverterFactory.create())
+            
+            // Se o init foi chamado, usa o cliente com VPN, senão usa um padrão
+            val client = okHttpClient ?: OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
                 .build()
+                
+            retrofit = builder.client(client).build()
         }
         return retrofit!!.create(XtreamService::class.java)
     }
