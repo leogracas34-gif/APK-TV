@@ -1,6 +1,8 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // Adicionado o plugin Kapt para processar as anotações do Room
+    id("kotlin-kapt")
 }
 
 android {
@@ -64,4 +66,12 @@ dependencies {
 
     implementation("androidx.cardview:cardview:1.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // ==========================================
+    // 🚀 DATABASE ROOM (ADICIONADO)
+    // ==========================================
+    val roomVersion = "2.6.1"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    kapt("androidx.room:room-compiler:$roomVersion")
 }
