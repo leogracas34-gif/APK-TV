@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.room.*
 
 // ==========================================
-// 🚀 ENTIDADES (TABELAS) - MANTIDAS INTEGRALMENTE
+// 🚀 ENTIDADES (TABELAS)
 // ==========================================
 
 @Entity(tableName = "user_profiles")
@@ -68,12 +68,12 @@ data class WatchHistoryEntity(
 )
 
 // ==========================================
-// 🚀 DAO (INTERFACE DE COMANDOS ATUALIZADA)
+// 🚀 DAO (INTERFACE DE COMANDOS)
 // ==========================================
 
 @Dao
 interface StreamDao {
-    // Gravação em Massa (MANTIDO)
+    // Gravação em Massa (Para o Login Automático)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLiveStreams(streams: List<LiveStreamEntity>)
 
@@ -86,31 +86,14 @@ interface StreamDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategories(categories: List<CategoryEntity>)
 
-    // ✅ CONSULTAS PARA LIVETVACTIVITY (ADICIONADAS PARA CORRIGIR ERRO)
-    @Query("SELECT * FROM categories WHERE type = :type ORDER BY category_name ASC")
-    suspend fun getCategoriesByType(type: String): List<CategoryEntity>
-
-    @Query("SELECT * FROM live_streams ORDER BY name ASC")
-    suspend fun getAllLiveStreams(): List<LiveStreamEntity>
-
-    @Query("SELECT * FROM live_streams WHERE category_id = :catId ORDER BY name ASC")
-    suspend fun getLiveStreamsByCategory(catId: String): List<LiveStreamEntity>
-
-    // Consultas Rápidas Originais (MANTIDO)
+    // Consultas Rápidas
     @Query("SELECT * FROM live_streams WHERE category_id = :catId")
     suspend fun getLiveByCategory(catId: String): List<LiveStreamEntity>
 
     @Query("SELECT * FROM vod_streams ORDER BY added DESC")
     suspend fun getAllVods(): List<VodEntity>
 
-    // ✅ CONSULTAS PARA VOD/SERIES (ADICIONADAS)
-    @Query("SELECT * FROM vod_streams WHERE category_id = :catId ORDER BY added DESC")
-    suspend fun getVodsByCategory(catId: String): List<VodEntity>
-
-    @Query("SELECT * FROM series_streams WHERE category_id = :catId ORDER BY name ASC")
-    suspend fun getSeriesByCategory(catId: String): List<SeriesEntity>
-
-    // Limpeza Inteligente (MANTIDO)
+    // Limpeza Inteligente (Evita travamentos)
     @Query("DELETE FROM live_streams")
     suspend fun clearLive()
 
@@ -119,11 +102,8 @@ interface StreamDao {
 
     @Query("DELETE FROM series_streams")
     suspend fun clearSeries()
-    
-    @Query("DELETE FROM categories")
-    suspend fun clearCategories()
 
-    // Perfis (MANTIDO)
+    // Perfis
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProfile(profile: ProfileEntity)
 
@@ -132,7 +112,7 @@ interface StreamDao {
 }
 
 // ==========================================
-// 🚀 ENGINE DO BANCO (SINGLETON) - ATUALIZADO
+// 🚀 ENGINE DO BANCO (SINGLETON)
 // ==========================================
 
 @Database(
@@ -144,12 +124,10 @@ interface StreamDao {
         WatchHistoryEntity::class,
         ProfileEntity::class
     ], 
-    version = 2, // ✅ Subimos para 2 para reconhecer as novas funções e tabelas
+    version = 1, // Começando como 1 para o novo projeto
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-    // Aqui o Database apenas diz que o StreamDao existe. 
-    // Como o Kotlin agora sabe onde ele está, não haverá redeclaração.
     abstract fun streamDao(): StreamDao
 
     companion object {
@@ -164,6 +142,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "vltv_smart_db"
                 )
                 .fallbackToDestructiveMigration()
+                // Ativa o modo de gravação rápida para não travar o app
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                 .build()
                 INSTANCE = instance
