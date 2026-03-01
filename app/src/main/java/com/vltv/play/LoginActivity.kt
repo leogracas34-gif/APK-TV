@@ -2,7 +2,6 @@ package com.vltv.play
 
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -11,61 +10,50 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.lifecycleScope
 import com.vltv.play.databinding.ActivityLoginBinding
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONArray
 
 class LoginActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLoginBinding
 
-    // SEUS 8 SERVIDORES XTREAM (MANTIDOS)
+    // SEUS 6 SERVIDORES XTREAM (MANTIDOS)
     private val SERVERS = listOf(
         "http://tvblack.shop",
         "http://redeinternadestiny.top",
         "http://fibercdn.sbs",
-        "http://blackstartv.shop",
+        "http://vupro.shop",
         "http://blackdns.shop",
-        "http://ouropreto.top",
-        "http://onwaveth.xyz:80",
         "http://blackdeluxe.shop"
     )
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(false)
-        .build()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // ✅ 1. VERIFICAÇÃO SILENCIOSA (igual ao que funciona)
-        val prefs = getSharedPreferences("vltv_prefs", Context.MODE_PRIVATE)
-        val savedUser = prefs.getString("username", null)
-        val savedPass = prefs.getString("password", null)
-        val savedDns = prefs.getString("dns", null)
-
-        if (!savedUser.isNullOrBlank() && !savedPass.isNullOrBlank() && !savedDns.isNullOrBlank()) {
-            verificarEIniciar(savedDns!!, savedUser!!, savedPass!!)
-            return
-        }
-
-        // ✅ 2. DESENHA TELA DE LOGIN
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // MODO IMERSIVO (SEU CÓDIGO MANTIDO)
-        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
-        windowInsetsController?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        val windowInsetsController =
+        WindowCompat.getInsetsController(window, window.decorView)
+        windowInsetsController?.systemBarsBehavior =
+        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         windowInsetsController?.hide(WindowInsetsCompat.Type.systemBars())
 
-        setupTouchAndDpad()  // SUA UI PREMIUM MANTIDA
+        val prefs = getSharedPreferences("vltv_prefs", Context.MODE_PRIVATE)
+        val savedUser = prefs.getString("username", null)
+        val savedPass = prefs.getString("password", null)
+
+        if (!savedUser.isNullOrBlank() && !savedPass.isNullOrBlank()) {
+            startHomeActivity()
+            return
+        }
+
+        // ✅ Config D-Pad TV com Animação Premium
+        setupTouchAndDpad()
 
         binding.btnLogin.setOnClickListener {
             val user = binding.etUsername.text.toString().trim()
@@ -74,51 +62,61 @@ class LoginActivity : AppCompatActivity() {
             if (user.isEmpty() || pass.isEmpty()) {
                 Toast.makeText(this, "Preencha todos os campos", Toast.LENGTH_SHORT).show()
             } else {
-                iniciarLoginTurbo(user, pass)  // NOVA LÓGICA OTIMIZADA
+                realizarLoginMultiServidor(user, pass)
             }
         }
     }
 
-    // ✅ NOVA: Corrida de DNS (igual ao projeto que funciona)
-    private fun iniciarLoginTurbo(user: String, pass: String) {
+    private fun realizarLoginMultiServidor(user: String, pass: String) {
         binding.progressBar.visibility = View.VISIBLE
         binding.btnLogin.isEnabled = false
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val deferreds = SERVERS.map { server -> async { testarConexaoIndividual(server, user, pass) } }
-                var dnsVencedor: String? = null
-                val startTime = System.currentTimeMillis()
-                
-                while (System.currentTimeMillis() - startTime < 8000) {  // 8s max
-                    val completed = deferreds.filter { it.isCompleted }
-                    for (job in completed) {
-                        val result = job.getCompleted()
-                        if (result != null) {
-                            dnsVencedor = result
-                            break
+        CoroutineScope(Dispatchers.IO).launch {
+            var success = false
+            var lastError: String? = null
+
+            for (server in SERVERS) {
+                val base = if (server.endsWith("/")) server.dropLast(1) else server
+                val urlString = "$base/player_api.php?username=$user&password=$pass"
+
+                try {
+                    val url = URL(urlString)
+                    val connection = url.openConnection() as HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 5000
+
+                    val responseCode = connection.responseCode
+                    if (responseCode == 200) {
+                        val prefs = getSharedPreferences("vltv_prefs", Context.MODE_PRIVATE)
+                        prefs.edit().apply {
+                            putString("dns", base)
+                            putString("username", user)
+                            putString("password", pass)
+                            apply()
                         }
+
+                        XtreamApi.setBaseUrl("$base/")
+
+                        success = true
+                        break
+                    } else {
+                        lastError = "Servidor $base retornou código $responseCode"
                     }
-                    if (dnsVencedor != null) break
-                    delay(100)
+                } catch (e: Exception) {
+                    lastError = "Servidor $server: ${e.message}"
                 }
+            }
 
-                deferreds.forEach { if (it.isActive) it.cancel() }
-
-                if (dnsVencedor != null) {
-                    salvarCredenciais(dnsVencedor!!, user, pass)
-                    preCarregarConteudoInicial(dnsVencedor!!, user, pass)  // ✅ PRÉ-CARREGA
-                    withContext(Dispatchers.Main) { startHomeActivity() }
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    startHomeActivity()
                 } else {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@LoginActivity, "Nenhum servidor disponível", Toast.LENGTH_LONG).show()
-                        binding.progressBar.visibility = View.GONE
-                        binding.btnLogin.isEnabled = true
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@LoginActivity, "Erro: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        applicationContext,
+                        "Erro de Login em todos os servidores.\n$lastError",
+                        Toast.LENGTH_LONG
+                    ).show()
                     binding.progressBar.visibility = View.GONE
                     binding.btnLogin.isEnabled = true
                 }
@@ -126,49 +124,64 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
-    // ✅ NOVA: Teste individual (igual ao que funciona)
-    private fun testarConexaoIndividual(baseUrl: String, user: String, pass: String): String? {
-        val urlLimpa = if (baseUrl.endsWith("/")) baseUrl.dropLast(1) else baseUrl
-        val apiLogin = "$urlLimpa/player_api.php?username=$user&password=$pass"
-
-        return try {
-            val request = Request.Builder().url(apiLogin).build()
-            client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    if (body.contains("user_info") && body.contains("server_info")) {
-                        return urlLimpa
-                    }
-                }
-                null
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    // ✅ NOVA: Pré-carrega conteúdo (igual ao que funciona)
-    private suspend fun preCarregarConteudoInicial(dns: String, user: String, pass: String) {
-        try {
-            // [AQUI VOCÊ INSERE A LÓGICA DO SEU BANCO Room para VOD/Series]
-            // Exemplo igual ao projeto que funciona:
-            // val vodUrl = "$dns/player_api.php?username=$user&password=$pass&action=get_vod_streams"
-            // ... parse JSON e salva no banco
-        } catch (e: Exception) { }
-    }
-
-    // SEUS MÉTODOS MANTIDOS (setupTouchAndDpad, startHomeActivity, etc.)
-    private fun setupTouchAndDpad() { /* SEU CÓDIGO PREMIUM */ }
-    private fun startHomeActivity() { /* SEU CÓDIGO ATUAL */ }
-    private fun verificarEIniciar(dns: String, user: String, pass: String) { /* LÓGICA SIMPLES */ }
-    private fun salvarCredenciais(dns: String, user: String, pass: String) {
+    private fun startHomeActivity() {
         val prefs = getSharedPreferences("vltv_prefs", Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putString("dns", dns)
-            putString("username", user)
-            putString("password", pass)
-            apply()
+        val savedDns = prefs.getString("dns", null)
+        if (!savedDns.isNullOrBlank()) {
+            XtreamApi.setBaseUrl(if (savedDns.endsWith("/")) savedDns else "$savedDns/")
         }
-        XtreamApi.setBaseUrl("$dns/")
+        
+        val intent = Intent(this, HomeActivity::class.java)
+        startActivity(intent)
+        finish()
+    }
+
+    // ✅ D-Pad TV PREMIUM (COM ZOOM SUAVE) ✅
+    private fun setupTouchAndDpad() {
+        // Listener de animação para os campos e botão
+        val premiumFocusListener = View.OnFocusChangeListener { v, hasFocus ->
+            if (hasFocus) {
+                // Aumenta levemente e suavemente quando focado
+                v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(200).start()
+                v.isSelected = true
+            } else {
+                // Volta ao normal quando perde o foco
+                v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(200).start()
+                v.isSelected = false
+            }
+        }
+
+        // Aplica o efeito nos campos e no botão
+        binding.etUsername.onFocusChangeListener = premiumFocusListener
+        binding.etPassword.onFocusChangeListener = premiumFocusListener
+        binding.btnLogin.onFocusChangeListener = premiumFocusListener
+        
+        binding.btnLogin.isFocusable = true
+        binding.btnLogin.isFocusableInTouchMode = true
+        
+        // Campos Enter = próximo campo (TV + teclado celular)
+        binding.etUsername.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN) {
+                binding.etPassword.requestFocus()
+                true
+            } else false
+        }
+        binding.etPassword.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN) {
+                binding.btnLogin.performClick()
+                true
+            } else false
+        }
+        
+        // Foco inicial no campo de usuário
+        binding.etUsername.requestFocus()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            finish()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 }
