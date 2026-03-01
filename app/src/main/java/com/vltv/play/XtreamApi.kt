@@ -1,13 +1,15 @@
 package com.vltv.play
 
+import okhttp3.OkHttpClient
 import retrofit2.Call
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
+import java.util.concurrent.TimeUnit
 
 // ---------------------
-// Modelos de Dados (TODOS MANTIDOS)
+// Modelos de Dados (TODOS MANTIDOS INTEGRALMENTE)
 // ---------------------
 
 data class XtreamLoginResponse(val user_info: UserInfo?, val server_info: ServerInfo?)
@@ -58,7 +60,7 @@ data class EpgWrapper(val epg_listings: List<EpgResponseItem>?)
 data class EpgResponseItem(val id: String?, val epg_id: String?, val title: String?, val lang: String?, val start: String?, val end: String?, val description: String?, val channel_id: String?, val start_timestamp: String?, val stop_timestamp: String?, val stop: String?)
 
 // ---------------------
-// Interface Retrofit (TODAS AS FUNÇÕES ORIGINAIS + AJUSTES)
+// Interface Retrofit (TODAS AS FUNÇÕES ORIGINAIS MANTIDAS)
 // ---------------------
 
 interface XtreamService {
@@ -79,7 +81,7 @@ interface XtreamService {
         @Query("username") user: String, 
         @Query("password") pass: String, 
         @Query("action") action: String = "get_vod_streams", 
-        @Query("category_id") categoryId: String = "0" // Valor padrão para não quebrar a Home
+        @Query("category_id") categoryId: String = "0"
     ): Call<List<VodStream>>
 
     @GET("player_api.php")
@@ -96,7 +98,7 @@ interface XtreamService {
         @Query("username") user: String, 
         @Query("password") pass: String, 
         @Query("action") action: String = "get_series", 
-        @Query("category_id") categoryId: String = "0" // Valor padrão para não quebrar a Home
+        @Query("category_id") categoryId: String = "0"
     ): Call<List<SeriesStream>>
 
     @GET("player_api.php")
@@ -109,19 +111,35 @@ interface XtreamService {
     fun getShortEpg(@Query("username") user: String, @Query("password") pass: String, @Query("action") action: String = "get_short_epg", @Query("stream_id") streamId: String, @Query("limit") limit: Int = 2): Call<EpgWrapper>
 }
 
+// ---------------------
+// Objeto XtreamApi (ATUALIZADO PARA SUPORTAR MULTI-DNS E VPN)
+// ---------------------
+
 object XtreamApi {
     private var retrofit: Retrofit? = null
-    private var baseUrl: String = "http://tvblack.shop/"
+    private var baseUrl: String = "http://placeholder.com/" // Iniciamos neutro para aceitar qualquer DNS
+
+    // Cliente OkHttp com Timeouts longos para carregar listas grandes sem erro
+    private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
 
     fun setBaseUrl(newUrl: String) {
-        baseUrl = if (newUrl.endsWith("/")) newUrl else "$newUrl/"
-        retrofit = null
+        val formattedUrl = if (newUrl.endsWith("/")) newUrl else "$newUrl/"
+        // Se o DNS for diferente do atual, resetamos o Retrofit
+        if (baseUrl != formattedUrl) {
+            baseUrl = formattedUrl
+            retrofit = null
+        }
     }
 
     val service: XtreamService get() {
         if (retrofit == null) {
             retrofit = Retrofit.Builder()
                 .baseUrl(baseUrl)
+                .client(okHttpClient) // Preparado para receber o Interceptor de VPN
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()
         }
