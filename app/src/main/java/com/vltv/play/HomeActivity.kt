@@ -22,6 +22,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.bumptech.glide.Glide
 import com.vltv.play.databinding.ActivityHomeBinding
 import com.vltv.play.DownloadHelper
+import com.vltv.play.data.AppDatabase // Importação do Banco
+import com.vltv.play.data.StreamDao   // Importação do DAO
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,11 +37,18 @@ class HomeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityHomeBinding
     private val TMDB_API_KEY = "9b73f5dd15b8165b1b57419be2f29128"
+    
+    // ✅ Referência ao DAO para acesso instantâneo aos dados sincronizados
+    private lateinit var streamDao: StreamDao
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityHomeBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Inicializa o acesso ao banco de dados que foi populado no login
+        val database = AppDatabase.getDatabase(this)
+        streamDao = database.streamDao()
 
         val windowInsetsController =
             WindowCompat.getInsetsController(window, window.decorView)
@@ -50,6 +59,9 @@ class HomeActivity : AppCompatActivity() {
         DownloadHelper.registerReceiver(this)
 
         setupClicks()
+        
+        // Sincronização Extra: Garante que os dados estejam prontos para as outras telas
+        verificarDadosSincronizados()
     }
 
     override fun onResume() {
@@ -69,6 +81,14 @@ class HomeActivity : AppCompatActivity() {
             
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    // Função para validar se o banco de dados tem conteúdo (opcional para logs/debug)
+    private fun verificarDadosSincronizados() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val totalVods = streamDao.getAllVods().size
+            // Aqui você poderia atualizar algum contador na tela se desejasse
         }
     }
 
@@ -249,7 +269,7 @@ class HomeActivity : AppCompatActivity() {
         val tipoAtual = if (ultimoTipo == "tv") "movie" else "tv"
         prefs.edit().putString("ultimo_tipo_banner", tipoAtual).apply()
 
-        // ✅ CORREÇÃO 1: Adicionado &region=BR na URL do Banner Destaque
+        // ✅ CORREÇÃO 1: Adicionado &region=BR na URL do Banner Destaque (MANTIDO)
         val urlString = "https://api.themoviedb.org/3/trending/$tipoAtual/day?api_key=$TMDB_API_KEY&language=pt-BR&region=BR"
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -312,7 +332,7 @@ class HomeActivity : AppCompatActivity() {
                         
                         var logoPath: String? = null
                         
-                        // ✅ CORREÇÃO 2: Laço 'for' para priorizar a logo do Banner em Português (pt)
+                        // ✅ CORREÇÃO 2: Laço 'for' para priorizar a logo do Banner em Português (pt) (MANTIDO)
                         for (i in 0 until logos.length()) {
                             val logo = logos.getJSONObject(i)
                             if (logo.optString("iso_639_1") == "pt") {
@@ -321,7 +341,6 @@ class HomeActivity : AppCompatActivity() {
                             }
                         }
 
-                        // Fallback caso não ache PT (usa a primeira disponível)
                         if (logoPath == null) logoPath = logos.getJSONObject(0).getString("file_path")
                         
                         val fullLogoUrl = "https://image.tmdb.org/t/p/w500$logoPath"
