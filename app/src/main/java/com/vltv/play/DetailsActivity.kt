@@ -425,7 +425,7 @@ class DetailsActivity : AppCompatActivity() {
 
     // ✅ PROTEÇÃO 3: LIMPEZA DE REDE AO SAIR (EVITA TRAVAMENTO GLOBAL)
     override fun onDestroy() {
-        client.dispatcher().cancelAll()
+        client.dispatcher.cancelAll()
         super.onDestroy()
     }
 
