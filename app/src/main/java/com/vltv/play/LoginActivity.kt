@@ -22,13 +22,15 @@ class LoginActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLoginBinding
 
-    // SEUS 6 SERVIDORES XTREAM (MANTIDOS)
+    // SEUS 8 SERVIDORES XTREAM (MANTIDOS)
     private val SERVERS = listOf(
         "http://tvblack.shop",
         "http://redeinternadestiny.top",
         "http://fibercdn.sbs",
-        "http://vupro.shop",
+        "http://blackstartv.shop",
         "http://blackdns.shop",
+        "http://ouropreto.top",
+        "http://onwaveth.xyz:80",
         "http://blackdeluxe.shop"
     )
 
