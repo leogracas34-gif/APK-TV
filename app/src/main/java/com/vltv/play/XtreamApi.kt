@@ -2,6 +2,7 @@ package com.vltv.play
 
 import android.content.Context
 import com.vltv.play.data.VpnInterceptor
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import retrofit2.Call
 import retrofit2.Retrofit
@@ -131,6 +132,7 @@ object XtreamApi {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
+            .dns(Dns.SYSTEM) // Utiliza o DNS do sistema para evitar bloqueios de resolução simples
             .addInterceptor(VpnInterceptor(context)) // Injeta a segurança de VPN
             .build()
         retrofit = null // Força recriação para aplicar o novo cliente
@@ -150,9 +152,10 @@ object XtreamApi {
                 .baseUrl(baseUrl)
                 .addConverterFactory(GsonConverterFactory.create())
             
-            // Se o init foi chamado, usa o cliente com VPN, senão usa um padrão
+            // Se o init foi chamado, usa o cliente com VPN, senão usa um padrão seguro
             val client = okHttpClient ?: OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
+                .dns(Dns.SYSTEM)
                 .build()
                 
             retrofit = builder.client(client).build()
