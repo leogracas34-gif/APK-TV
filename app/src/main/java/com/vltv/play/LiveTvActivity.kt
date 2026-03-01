@@ -167,7 +167,9 @@ class LiveTvActivity : AppCompatActivity() {
             carregarCanais(categoria)
         }
         rvCategories.adapter = categoryAdapter
-        carregarCanais(categorias[0])
+        
+        // ✅ CORREÇÃO: Uso de firstOrNull para evitar erro de Integer Literal e garantir segurança
+        categorias.firstOrNull()?.let { carregarCanais(it) }
     }
 
     private fun carregarCanais(categoria: LiveCategory) {
