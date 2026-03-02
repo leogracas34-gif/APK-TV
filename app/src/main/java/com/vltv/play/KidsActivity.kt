@@ -25,9 +25,15 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.vltv.play.data.AppDatabase // ✅ Importação da Database
+import com.vltv.play.data.StreamDao   // ✅ Importação do DAO
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class KidsActivity : AppCompatActivity() {
     private lateinit var rvHubChannels: RecyclerView
@@ -39,6 +45,9 @@ class KidsActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
     private var user = ""
     private var pass = ""
+
+    // ✅ Injeção da Database
+    private lateinit var streamDao: StreamDao
 
     private val termosProibidos = listOf(
         "adulto", "xxx", "sexo", "sexy", "porn", "18+", "erótico", "violência", 
@@ -53,6 +62,10 @@ class KidsActivity : AppCompatActivity() {
         windowInsetsController?.hide(WindowInsetsCompat.Type.systemBars())
 
         setContentView(R.layout.activity_kids)
+
+        // ✅ Inicializa o banco de dados
+        val database = AppDatabase.getDatabase(this)
+        streamDao = database.streamDao()
 
         prefs = getSharedPreferences("vltv_prefs", Context.MODE_PRIVATE)
         user = prefs.getString("username", "") ?: ""
@@ -138,103 +151,62 @@ class KidsActivity : AppCompatActivity() {
 
     private fun setupHubChannels() {
         val nomesDesejados = listOf("Cartoon Network", "Discovery Kids", "Gloob", "Cartoonito", "Nickelodeon")
-        XtreamApi.service.getLiveStreams(user, pass, categoryId = "0").enqueue(object : Callback<List<LiveStream>> {
-            override fun onResponse(call: Call<List<LiveStream>>, response: Response<List<LiveStream>>) {
-                if (response.isSuccessful && response.body() != null) {
-                    val todosCanais = response.body()!!
-                    val listaHub = mutableListOf<LiveStream>()
-                    nomesDesejados.forEach { nomeBusca ->
-                        todosCanais.firstOrNull { it.name.contains(nomeBusca, ignoreCase = true) }?.let {
-                            listaHub.add(it)
-                        }
-                    }
-                    rvHubChannels.adapter = HubAdapter(listaHub) { canal ->
-                        // ✅ ATUALIZADO: Enviando Nome e EPG para o Player não ficar genérico
-                        val intent = Intent(this@KidsActivity, PlayerActivity::class.java).apply {
-                            putExtra("stream_id", canal.id)
-                            putExtra("name", canal.name)
-                            putExtra("title", canal.name)
-                            putExtra("type", "live")
-                            putExtra("epg_channel_id", canal.epg_channel_id)
-                        }
-                        startActivity(intent)
+        
+        // ✅ ATUALIZADO: Busca instantânea no Banco de Dados
+        CoroutineScope(Dispatchers.Main).launch {
+            val todosCanaisDb = withContext(Dispatchers.IO) { streamDao.getAllLiveStreams() }
+            
+            if (todosCanaisDb.isNotEmpty()) {
+                val listaHub = mutableListOf<LiveStream>()
+                nomesDesejados.forEach { nomeBusca ->
+                    todosCanaisDb.firstOrNull { it.name.contains(nomeBusca, ignoreCase = true) }?.let {
+                        listaHub.add(LiveStream(it.stream_id, it.name, it.stream_icon, it.epg_channel_id))
                     }
                 }
+                rvHubChannels.adapter = HubAdapter(listaHub) { canal ->
+                    val intent = Intent(this@KidsActivity, PlayerActivity::class.java).apply {
+                        putExtra("stream_id", canal.id)
+                        putExtra("name", canal.name)
+                        putExtra("title", canal.name)
+                        putExtra("type", "live")
+                        putExtra("epg_channel_id", canal.epg_channel_id)
+                    }
+                    startActivity(intent)
+                }
             }
-            override fun onFailure(call: Call<List<LiveStream>>, t: Throwable) {}
-        })
+        }
     }
 
     private fun carregarConteudoKids() {
-        XtreamApi.service.getVodCategories(user, pass).enqueue(object : Callback<List<LiveCategory>> {
-            override fun onResponse(call: Call<List<LiveCategory>>, response: Response<List<LiveCategory>>) {
-                if (response.isSuccessful) {
-                    val kidsCats = response.body()?.filter {
-                        val n = it.name.lowercase()
-                        n.contains("kids") || n.contains("infantil") || n.contains("desenho") || n.contains("disney")
-                    }
-                    kidsCats?.forEach { cat ->
-                        XtreamApi.service.getVodStreams(user, pass, categoryId = cat.id).enqueue(object : Callback<List<VodStream>> {
-                            override fun onResponse(call: Call<List<VodStream>>, res: Response<List<VodStream>>) {
-                                if (res.isSuccessful && res.body() != null) {
-                                    val adapterExistente = rvMoviesKids.adapter as? KidsVodAdapter
-                                    if (adapterExistente != null) {
-                                        val listaAtual = adapterExistente.list.toMutableList()
-                                        listaAtual.addAll(res.body()!!)
-                                        rvMoviesKids.adapter = KidsVodAdapter(listaAtual.distinctBy { it.id }) { filme ->
-                                            salvarNosRecentes(filme.id.toString(), "movie")
-                                            abrirDetalhesFilme(filme)
-                                        }
-                                    } else {
-                                        rvMoviesKids.adapter = KidsVodAdapter(res.body()!!) { filme ->
-                                            salvarNosRecentes(filme.id.toString(), "movie")
-                                            abrirDetalhesFilme(filme)
-                                        }
-                                    }
-                                }
-                            }
-                            override fun onFailure(call: Call<List<VodStream>>, t: Throwable) {}
-                        })
-                    }
-                }
-            }
-            override fun onFailure(call: Call<List<LiveCategory>>, t: Throwable) {}
-        })
+        CoroutineScope(Dispatchers.Main).launch {
+            // ✅ FILMES KIDS DO BANCO
+            val todosVods = withContext(Dispatchers.IO) { streamDao.getAllVods() }
+            val filmesKids = todosVods.filter {
+                val n = it.name.lowercase()
+                n.contains("kids") || n.contains("infantil") || n.contains("desenho") || n.contains("disney")
+            }.map { VodStream(it.stream_id, it.name, it.title, it.stream_icon, it.container_extension, it.rating) }
 
-        XtreamApi.service.getSeriesCategories(user, pass).enqueue(object : Callback<List<LiveCategory>> {
-            override fun onResponse(call: Call<List<LiveCategory>>, response: Response<List<LiveCategory>>) {
-                if (response.isSuccessful) {
-                    val kidsSeriesCats = response.body()?.filter {
-                        val n = it.name.lowercase()
-                        n.contains("kids") || n.contains("infantil") || n.contains("desenho") || n.contains("disney")
-                    }
-                    kidsSeriesCats?.forEach { cat ->
-                        XtreamApi.service.getSeries(user, pass, categoryId = cat.id).enqueue(object : Callback<List<SeriesStream>> {
-                            override fun onResponse(call: Call<List<SeriesStream>>, res: Response<List<SeriesStream>>) {
-                                if (res.isSuccessful && res.body() != null) {
-                                    val adapterExistente = rvSeriesKids.adapter as? KidsSeriesAdapter
-                                    if (adapterExistente != null) {
-                                        val listaAtual = adapterExistente.list.toMutableList()
-                                        listaAtual.addAll(res.body()!!)
-                                        rvSeriesKids.adapter = KidsSeriesAdapter(listaAtual.distinctBy { it.id }) { serie ->
-                                            salvarNosRecentes(serie.id.toString(), "series")
-                                            abrirDetalhesSerie(serie)
-                                        }
-                                    } else {
-                                        rvSeriesKids.adapter = KidsSeriesAdapter(res.body()!!) { serie ->
-                                            salvarNosRecentes(serie.id.toString(), "series")
-                                            abrirDetalhesSerie(serie)
-                                        }
-                                    }
-                                }
-                            }
-                            override fun onFailure(call: Call<List<SeriesStream>>, t: Throwable) {}
-                        })
-                    }
+            if (filmesKids.isNotEmpty()) {
+                rvMoviesKids.adapter = KidsVodAdapter(filmesKids) { filme ->
+                    salvarNosRecentes(filme.id.toString(), "movie")
+                    abrirDetalhesFilme(filme)
                 }
             }
-            override fun onFailure(call: Call<List<LiveCategory>>, t: Throwable) {}
-        })
+
+            // ✅ SÉRIES KIDS DO BANCO
+            val todasSeries = withContext(Dispatchers.IO) { streamDao.getAllSeries() }
+            val seriesKids = todasSeries.filter {
+                val n = it.name.lowercase()
+                n.contains("kids") || n.contains("infantil") || n.contains("desenho") || n.contains("disney")
+            }.map { SeriesStream(it.series_id, it.name, it.cover, it.rating) }
+
+            if (seriesKids.isNotEmpty()) {
+                rvSeriesKids.adapter = KidsSeriesAdapter(seriesKids) { serie ->
+                    salvarNosRecentes(serie.id.toString(), "series")
+                    abrirDetalhesSerie(serie)
+                }
+            }
+        }
     }
 
     private fun salvarNosRecentes(id: String, tipo: String) {
@@ -248,33 +220,24 @@ class KidsActivity : AppCompatActivity() {
     private fun atualizarRecentesVisual() {
         val recentVodIds = prefs.getStringSet("kids_recent_vod", emptySet()) ?: emptySet()
         val recentSeriesIds = prefs.getStringSet("kids_recent_series", emptySet()) ?: emptySet()
+        
         if (recentVodIds.isNotEmpty() || recentSeriesIds.isNotEmpty()) {
-            val listaRecentesUnificada = mutableListOf<KidsRecentItem>()
-            if (recentVodIds.isNotEmpty()) {
-                XtreamApi.service.getAllVodStreams(user, pass).enqueue(object : Callback<List<VodStream>> {
-                    override fun onResponse(call: Call<List<VodStream>>, response: Response<List<VodStream>>) {
-                        if (response.isSuccessful && response.body() != null) {
-                            response.body()!!.filter { recentVodIds.contains(it.id.toString()) }.forEach {
-                                listaRecentesUnificada.add(KidsRecentItem(it.id.toString(), it.name ?: "Filme", it.icon ?: "", "movie", it, null))
-                            }
-                            exibirRecentes(listaRecentesUnificada)
-                        }
-                    }
-                    override fun onFailure(call: Call<List<VodStream>>, t: Throwable) {}
-                })
-            }
-            if (recentSeriesIds.isNotEmpty()) {
-                XtreamApi.service.getAllSeries(user, pass).enqueue(object : Callback<List<SeriesStream>> {
-                    override fun onResponse(call: Call<List<SeriesStream>>, response: Response<List<SeriesStream>>) {
-                        if (response.isSuccessful && response.body() != null) {
-                            response.body()!!.filter { recentSeriesIds.contains(it.id.toString()) }.forEach {
-                                listaRecentesUnificada.add(KidsRecentItem(it.id.toString(), it.name ?: "Série", it.icon ?: "", "series", null, it))
-                            }
-                            exibirRecentes(listaRecentesUnificada)
-                        }
-                    }
-                    override fun onFailure(call: Call<List<SeriesStream>>, t: Throwable) {}
-                })
+            CoroutineScope(Dispatchers.Main).launch {
+                val listaRecentesUnificada = mutableListOf<KidsRecentItem>()
+                
+                val todosVods = withContext(Dispatchers.IO) { streamDao.getAllVods() }
+                todosVods.filter { recentVodIds.contains(it.stream_id.toString()) }.forEach {
+                    val obj = VodStream(it.stream_id, it.name, it.title, it.stream_icon, it.container_extension, it.rating)
+                    listaRecentesUnificada.add(KidsRecentItem(it.stream_id.toString(), it.name ?: "Filme", it.stream_icon ?: "", "movie", obj, null))
+                }
+
+                val todasSeries = withContext(Dispatchers.IO) { streamDao.getAllSeries() }
+                todasSeries.filter { recentSeriesIds.contains(it.series_id.toString()) }.forEach {
+                    val obj = SeriesStream(it.series_id, it.name, it.cover, it.rating)
+                    listaRecentesUnificada.add(KidsRecentItem(it.series_id.toString(), it.name ?: "Série", it.cover ?: "", "series", null, obj))
+                }
+                
+                exibirRecentes(listaRecentesUnificada)
             }
         }
     }
