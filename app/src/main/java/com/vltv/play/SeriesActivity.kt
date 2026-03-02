@@ -25,6 +25,8 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.Priority
 import com.bumptech.glide.request.target.Target
+import com.vltv.play.data.AppDatabase // ✅ Importação da Database
+import com.vltv.play.data.StreamDao   // ✅ Importação do DAO
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -51,6 +53,9 @@ class SeriesActivity : AppCompatActivity() {
     private var password = ""
     private lateinit var seriesCachePrefs: SharedPreferences // ✅ NOVO: Armazena links das logos
 
+    // ✅ Injeção da Database Inteligente
+    private lateinit var streamDao: StreamDao
+
     // Cache em memória
     private var cachedCategories: List<LiveCategory>? = null
     private val seriesCache = mutableMapOf<String, List<SeriesStream>>() // key = categoryId
@@ -71,6 +76,10 @@ class SeriesActivity : AppCompatActivity() {
         // --- USANDO O LAYOUT LIMPO (SEM PLAYER) ---
         setContentView(R.layout.activity_vod)
         // ---------------------------
+
+        // ✅ Inicializa o banco de dados
+        val database = AppDatabase.getDatabase(this)
+        streamDao = database.streamDao()
 
         val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
         windowInsetsController?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -203,51 +212,39 @@ class SeriesActivity : AppCompatActivity() {
     }
 
     private fun carregarCategorias() {
-        cachedCategories?.let { categoriasCacheadas ->
-            aplicarCategorias(categoriasCacheadas)
-            return
-        }
+        // ✅ CARREGAMENTO INSTANTÂNEO PELO BANCO DE DADOS
+        CoroutineScope(Dispatchers.Main).launch {
+            progressBar.visibility = View.VISIBLE
+            val categoriasDb = withContext(Dispatchers.IO) {
+                streamDao.getCategoriesByType("series")
+            }
+            progressBar.visibility = View.GONE
 
-        progressBar.visibility = View.VISIBLE
-
-        XtreamApi.service.getSeriesCategories(username, password)
-            .enqueue(object : Callback<List<LiveCategory>> {
-                override fun onResponse(
-                    call: Call<List<LiveCategory>>,
-                    response: Response<List<LiveCategory>>
-                ) {
-                    progressBar.visibility = View.GONE
-                    if (response.isSuccessful && response.body() != null) {
-                        val originais = response.body()!!
-
-                        var categorias = mutableListOf<LiveCategory>()
-                        categorias.add(
-                            LiveCategory(
-                                category_id = "FAV_SERIES",
-                                category_name = "FAVORITOS"
-                            )
-                        )
-                        categorias.addAll(originais)
-
-                        cachedCategories = categorias
-
-                        if (ParentalControlManager.isEnabled(this@SeriesActivity)) {
-                            categorias = categorias.filterNot { cat ->
-                                isAdultName(cat.name)
-                            }.toMutableList()
+            if (categoriasDb.isNotEmpty()) {
+                val categorias = categoriasDb.map { LiveCategory(it.category_id, it.category_name) }.toMutableList()
+                categorias.add(0, LiveCategory(category_id = "FAV_SERIES", category_name = "FAVORITOS"))
+                
+                var listaFiltrada = categorias.toList()
+                if (ParentalControlManager.isEnabled(this@SeriesActivity)) {
+                    listaFiltrada = categorias.filterNot { isAdultName(it.name) }
+                }
+                cachedCategories = listaFiltrada
+                aplicarCategorias(listaFiltrada)
+            } else {
+                // Fallback API
+                XtreamApi.service.getSeriesCategories(username, password)
+                    .enqueue(object : Callback<List<LiveCategory>> {
+                        override fun onResponse(call: Call<List<LiveCategory>>, response: Response<List<LiveCategory>>) {
+                            if (response.isSuccessful && response.body() != null) {
+                                val categorias = response.body()!!.toMutableList()
+                                categorias.add(0, LiveCategory(category_id = "FAV_SERIES", category_name = "FAVORITOS"))
+                                aplicarCategorias(categorias)
+                            }
                         }
-
-                        aplicarCategorias(categorias)
-                    } else {
-                        Toast.makeText(this@SeriesActivity, "Erro ao carregar categorias", Toast.LENGTH_SHORT).show()
-                    }
-                }
-
-                override fun onFailure(call: Call<List<LiveCategory>>, t: Throwable) {
-                    progressBar.visibility = View.GONE
-                    Toast.makeText(this@SeriesActivity, "Falha de conexão", Toast.LENGTH_SHORT).show()
-                }
-            })
+                        override fun onFailure(call: Call<List<LiveCategory>>, t: Throwable) {}
+                    })
+            }
+        }
     }
 
     private fun aplicarCategorias(categorias: List<LiveCategory>) {
@@ -278,94 +275,51 @@ class SeriesActivity : AppCompatActivity() {
 
     private fun carregarSeries(categoria: LiveCategory) {
         tvCategoryTitle.text = categoria.name
+        val catIdStr = categoria.id.toString()
 
-        seriesCache[categoria.id]?.let { seriesCacheadas ->
-            aplicarSeries(seriesCacheadas)
-            preLoadImages(seriesCacheadas) // ✅ PRELOAD DO CACHE
-            return
-        }
+        // ✅ CARREGAMENTO INSTANTÂNEO DE SÉRIES PELO BANCO DE DADOS
+        CoroutineScope(Dispatchers.Main).launch {
+            progressBar.visibility = View.VISIBLE
+            val seriesDb = withContext(Dispatchers.IO) {
+                if (catIdStr == "0") streamDao.getAllSeries()
+                else streamDao.getSeriesByCategory(catIdStr)
+            }
+            progressBar.visibility = View.GONE
 
-        progressBar.visibility = View.VISIBLE
-
-        XtreamApi.service.getSeries(username, password, categoryId = categoria.id)
-            .enqueue(object : Callback<List<SeriesStream>> {
-                override fun onResponse(
-                    call: Call<List<SeriesStream>>,
-                    response: Response<List<SeriesStream>>
-                ) {
-                    progressBar.visibility = View.GONE
-                    if (response.isSuccessful && response.body() != null) {
-                        var series = response.body()!!
-
-                        seriesCache[categoria.id] = series
-
-                        if (ParentalControlManager.isEnabled(this@SeriesActivity)) {
-                            series = series.filterNot { s ->
-                                isAdultName(s.name)
+            if (seriesDb.isNotEmpty()) {
+                val series = seriesDb.map { SeriesStream(it.series_id, it.name, it.cover, it.rating) }
+                var listaFiltrada = series
+                if (ParentalControlManager.isEnabled(this@SeriesActivity)) {
+                    listaFiltrada = series.filterNot { isAdultName(it.name) }
+                }
+                aplicarSeries(listaFiltrada)
+                preLoadImages(listaFiltrada)
+            } else {
+                // Fallback API
+                XtreamApi.service.getSeries(username, password, categoryId = catIdStr)
+                    .enqueue(object : Callback<List<SeriesStream>> {
+                        override fun onResponse(call: Call<List<SeriesStream>>, response: Response<List<SeriesStream>>) {
+                            if (response.isSuccessful && response.body() != null) {
+                                aplicarSeries(response.body()!!)
                             }
                         }
-
-                        aplicarSeries(series)
-                        preLoadImages(series) // ✅ PRELOAD DA API
-                    }
-                }
-
-                override fun onFailure(call: Call<List<SeriesStream>>, t: Throwable) {
-                    progressBar.visibility = View.GONE
-                }
-            })
+                        override fun onFailure(call: Call<List<SeriesStream>>, t: Throwable) {}
+                    })
+            }
+        }
     }
 
     private fun carregarSeriesFavoritas() {
         tvCategoryTitle.text = "FAVORITOS"
         val favIds = getFavSeries(this)
 
-        if (favIds.isEmpty()) {
-            rvSeries.adapter = SeriesAdapter(emptyList()) {}
-            Toast.makeText(this, "Nenhuma série favorita.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // ✅ ACELERAÇÃO: Tenta encontrar as séries já carregadas na memória (todas as abas)
-        val listaFavoritosInstantanea = mutableListOf<SeriesStream>()
-        seriesCache.values.flatten().distinctBy { it.id }.forEach { serie ->
-            if (favIds.contains(serie.id)) {
-                listaFavoritosInstantanea.add(serie)
+        CoroutineScope(Dispatchers.Main).launch {
+            val todasNoDb = withContext(Dispatchers.IO) { streamDao.getAllSeries() }
+            val favoritos = todasNoDb.filter { favIds.contains(it.series_id) }.map {
+                SeriesStream(it.series_id, it.name, it.cover, it.rating)
             }
+            aplicarSeries(favoritos)
         }
-
-        // Se encontrou as séries no cache, exibe instantaneamente sem chamar a API
-        if (listaFavoritosInstantanea.size >= favIds.size) {
-            aplicarSeries(listaFavoritosInstantanea)
-            return
-        }
-
-        // Caso não estejam no cache, faz a busca padrão (Categoria 0)
-        progressBar.visibility = View.VISIBLE
-        XtreamApi.service.getSeries(username, password, categoryId = "0")
-            .enqueue(object : Callback<List<SeriesStream>> {
-                override fun onResponse(
-                    call: Call<List<SeriesStream>>,
-                    response: Response<List<SeriesStream>>
-                ) {
-                    progressBar.visibility = View.GONE
-                    if (response.isSuccessful && response.body() != null) {
-                        var todas = response.body()!!
-                        todas = todas.filter { favIds.contains(it.id) }
-
-                        if (ParentalControlManager.isEnabled(this@SeriesActivity)) {
-                            todas = todas.filterNot { s -> isAdultName(s.name) }
-                        }
-
-                        favSeriesCache = todas
-                        aplicarSeries(todas)
-                    }
-                }
-
-                override fun onFailure(call: Call<List<SeriesStream>>, t: Throwable) {
-                    progressBar.visibility = View.GONE
-                }
-            })
     }
 
     private fun aplicarSeries(series: List<SeriesStream>) {
@@ -430,11 +384,11 @@ class SeriesActivity : AppCompatActivity() {
 
             holder.itemView.setOnFocusChangeListener { view, hasFocus ->
                 if (hasFocus) {
-                    // ✅ FOCO AMARELO + NEON + ZOOM NAS CATEGORIAS
+                    // ✅ FOCO AMARELO + NEON + ZOOM 1.08f NAS CATEGORIAS
                     holder.tvName.setTextColor(Color.YELLOW)
                     holder.tvName.textSize = 20f
                     view.setBackgroundResource(R.drawable.bg_focus_neon)
-                    view.animate().scaleX(1.05f).scaleY(1.05f).setDuration(150).start()
+                    view.animate().scaleX(1.08f).scaleY(1.08f).setDuration(150).start()
                 } else {
                     holder.tvName.textSize = 16f
                     view.setBackgroundResource(0)
@@ -516,10 +470,10 @@ class SeriesActivity : AppCompatActivity() {
 
             holder.itemView.setOnFocusChangeListener { view, hasFocus ->
                 if (hasFocus) {
-                    // ✅ FOCO AMARELO + NEON + ZOOM 1.15f
+                    // ✅ FOCO AMARELO + NEON + ZOOM 1.10f NAS SÉRIES
                     holder.tvName.setTextColor(Color.YELLOW)
                     holder.tvName.textSize = 18f
-                    view.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150).start()
+                    view.animate().scaleX(1.10f).scaleY(1.10f).setDuration(150).start()
                     view.elevation = 20f
                     view.setBackgroundResource(R.drawable.bg_focus_neon) // Aplica borda neon
                     if (holder.imgLogo.visibility != View.VISIBLE) holder.tvName.visibility = View.VISIBLE
