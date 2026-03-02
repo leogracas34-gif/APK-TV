@@ -23,6 +23,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.Priority
+import com.vltv.play.data.AppDatabase // ✅ Importação da Database
+import com.vltv.play.data.StreamDao   // ✅ Importação do DAO
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -42,6 +44,10 @@ class VodActivity : AppCompatActivity() {
     private var password = ""
     private lateinit var prefs: SharedPreferences
     private lateinit var gridCachePrefs: SharedPreferences
+    
+    // ✅ Injeção da Database Inteligente
+    private lateinit var streamDao: StreamDao
+
     private var cachedCategories: List<LiveCategory>? = null
     private val moviesCache = mutableMapOf<String, List<VodStream>>()
     private var favMoviesCache: List<VodStream>? = null
@@ -56,6 +62,10 @@ class VodActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_vod)
+
+        // ✅ Inicializa o banco de dados
+        val database = AppDatabase.getDatabase(this)
+        streamDao = database.streamDao()
 
         val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
         windowInsetsController?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -131,28 +141,41 @@ class VodActivity : AppCompatActivity() {
     }
 
     private fun carregarCategorias() {
-        cachedCategories?.let { aplicarCategorias(it); return }
-        progressBar.visibility = View.VISIBLE
-        XtreamApi.service.getVodCategories(username, password)
-            .enqueue(object : retrofit2.Callback<List<LiveCategory>> {
-                override fun onResponse(call: retrofit2.Call<List<LiveCategory>>, response: retrofit2.Response<List<LiveCategory>>) {
-                    progressBar.visibility = View.GONE
-                    if (response.isSuccessful && response.body() != null) {
-                        val originais = response.body()!!
-                        var categorias = mutableListOf<LiveCategory>()
-                        categorias.add(LiveCategory(category_id = "FAV", category_name = "FAVORITOS"))
-                        categorias.addAll(originais)
-                        cachedCategories = categorias
-                        if (ParentalControlManager.isEnabled(this@VodActivity)) {
-                            categorias = categorias.filterNot { isAdultName(it.name) }.toMutableList()
+        // ✅ CARREGAMENTO INSTANTÂNEO PELO BANCO DE DADOS
+        CoroutineScope(Dispatchers.Main).launch {
+            progressBar.visibility = View.VISIBLE
+            val categoriasDb = withContext(Dispatchers.IO) {
+                streamDao.getCategoriesByType("vod")
+            }
+            progressBar.visibility = View.GONE
+
+            if (categoriasDb.isNotEmpty()) {
+                val categorias = categoriasDb.map { LiveCategory(it.category_id, it.category_name) }.toMutableList()
+                categorias.add(0, LiveCategory(category_id = "FAV", category_name = "FAVORITOS"))
+                
+                var listaFiltrada = categorias.toList()
+                if (ParentalControlManager.isEnabled(this@VodActivity)) {
+                    listaFiltrada = categorias.filterNot { isAdultName(it.name) }
+                }
+                cachedCategories = listaFiltrada
+                aplicarCategorias(listaFiltrada)
+            } else {
+                // Fallback para API caso o banco esteja vazio
+                XtreamApi.service.getVodCategories(username, password)
+                    .enqueue(object : retrofit2.Callback<List<LiveCategory>> {
+                        override fun onResponse(call: retrofit2.Call<List<LiveCategory>>, response: retrofit2.Response<List<LiveCategory>>) {
+                            if (response.isSuccessful && response.body() != null) {
+                                val originais = response.body()!!
+                                val categorias = mutableListOf<LiveCategory>()
+                                categorias.add(LiveCategory(category_id = "FAV", category_name = "FAVORITOS"))
+                                categorias.addAll(originais)
+                                aplicarCategorias(categorias)
+                            }
                         }
-                        aplicarCategorias(categorias)
-                    }
-                }
-                override fun onFailure(call: retrofit2.Call<List<LiveCategory>>, t: Throwable) {
-                    progressBar.visibility = View.GONE
-                }
-            })
+                        override fun onFailure(call: Call<List<LiveCategory>>, t: Throwable) {}
+                    })
+            }
+        }
     }
 
     private fun aplicarCategorias(categorias: List<LiveCategory>) {
@@ -165,33 +188,52 @@ class VodActivity : AppCompatActivity() {
 
     private fun carregarFilmes(categoria: LiveCategory) {
         tvCategoryTitle.text = categoria.name
-        moviesCache[categoria.id]?.let { aplicarFilmes(it); preLoadImages(it); return }
-        progressBar.visibility = View.VISIBLE
-        XtreamApi.service.getVodStreams(username, password, categoryId = categoria.id)
-            .enqueue(object : retrofit2.Callback<List<VodStream>> {
-                override fun onResponse(call: retrofit2.Call<List<VodStream>>, response: retrofit2.Response<List<VodStream>>) {
-                    progressBar.visibility = View.GONE
-                    if (response.isSuccessful && response.body() != null) {
-                        var filmes = response.body()!!
-                        moviesCache[categoria.id] = filmes
-                        if (ParentalControlManager.isEnabled(this@VodActivity)) {
-                            filmes = filmes.filterNot { isAdultName(it.name) || isAdultName(it.title) }
+        val catIdStr = categoria.id.toString()
+
+        // ✅ CARREGAMENTO INSTANTÂNEO DE FILMES PELO BANCO DE DADOS
+        CoroutineScope(Dispatchers.Main).launch {
+            progressBar.visibility = View.VISIBLE
+            val filmesDb = withContext(Dispatchers.IO) {
+                if (catIdStr == "0") streamDao.getAllVods()
+                else streamDao.getVodStreamsByCategory(catIdStr)
+            }
+            progressBar.visibility = View.GONE
+
+            if (filmesDb.isNotEmpty()) {
+                val filmes = filmesDb.map { 
+                    VodStream(it.stream_id, it.name, it.title, it.stream_icon, it.container_extension, it.rating) 
+                }
+                var listaFiltrada = filmes
+                if (ParentalControlManager.isEnabled(this@VodActivity)) {
+                    listaFiltrada = filmes.filterNot { isAdultName(it.name) }
+                }
+                aplicarFilmes(listaFiltrada)
+                preLoadImages(listaFiltrada)
+            } else {
+                // Fallback API
+                XtreamApi.service.getVodStreams(username, password, categoryId = catIdStr)
+                    .enqueue(object : retrofit2.Callback<List<VodStream>> {
+                        override fun onResponse(call: Call<List<VodStream>>, response: Response<List<VodStream>>) {
+                            if (response.isSuccessful && response.body() != null) {
+                                aplicarFilmes(response.body()!!)
+                            }
                         }
-                        aplicarFilmes(filmes)
-                        preLoadImages(filmes)
-                    }
-                }
-                override fun onFailure(call: retrofit2.Call<List<VodStream>>, t: Throwable) {
-                    progressBar.visibility = View.GONE
-                }
-            })
+                        override fun onFailure(call: Call<List<VodStream>>, t: Throwable) {}
+                    })
+            }
+        }
     }
 
     private fun carregarFilmesFavoritos() {
         tvCategoryTitle.text = "FAVORITOS"
         val favIds = getFavMovies(this)
-        val listaFavoritosInstantanea = moviesCache.values.flatten().distinctBy { it.id }.filter { favIds.contains(it.id) }
-        aplicarFilmes(listaFavoritosInstantanea)
+        CoroutineScope(Dispatchers.Main).launch {
+            val todosVods = withContext(Dispatchers.IO) { streamDao.getAllVods() }
+            val favoritos = todosVods.filter { favIds.contains(it.stream_id) }.map {
+                VodStream(it.stream_id, it.name, it.title, it.stream_icon, it.container_extension, it.rating)
+            }
+            aplicarFilmes(favoritos)
+        }
     }
 
     private fun aplicarFilmes(filmes: List<VodStream>) {
@@ -242,7 +284,7 @@ class VodActivity : AppCompatActivity() {
                     h.tvName.setTextColor(Color.YELLOW) // ✅ AMARELO NO FOCO
                     h.tvName.textSize = 20f // ✅ TEXTO MAIOR NA TV
                     view.setBackgroundResource(R.drawable.bg_focus_neon)
-                    view.animate().scaleX(1.10f).scaleY(1.10f).setDuration(150).start()
+                    view.animate().scaleX(1.08f).scaleY(1.08f).setDuration(150).start()
                 } else {
                     h.tvName.textSize = 16f
                     view.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
@@ -306,7 +348,7 @@ class VodActivity : AppCompatActivity() {
                     h.tvName.setTextColor(Color.YELLOW) // ✅ AMARELO NO FILME
                     h.tvName.textSize = 18f // ✅ NOME DO FILME MAIOR
                     view.setBackgroundResource(R.drawable.bg_focus_neon)
-                    view.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150).start()
+                    view.animate().scaleX(1.10f).scaleY(1.10f).setDuration(150).start()
                     view.elevation = 20f
                     if (h.imgLogo.visibility != View.VISIBLE) h.tvName.visibility = View.VISIBLE
                 } else {
