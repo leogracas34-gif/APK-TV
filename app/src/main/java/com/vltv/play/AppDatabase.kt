@@ -106,6 +106,13 @@ interface StreamDao {
     @Query("SELECT * FROM vod_streams WHERE category_id = :catId")
     suspend fun getVodStreamsByCategory(catId: String): List<VodEntity>
 
+    // ✅ ADICIONADO: Buscas individuais para DetailsActivity resolver erro de compilação
+    @Query("SELECT * FROM vod_streams WHERE stream_id = :id LIMIT 1")
+    suspend fun getVodById(id: Int): VodEntity?
+
+    @Query("SELECT * FROM series_streams WHERE series_id = :id LIMIT 1")
+    suspend fun getSeriesById(id: Int): SeriesEntity?
+
     // ✅ ADICIONADO: Consultas para SeriesActivity (Para uso futuro)
     @Query("SELECT * FROM series_streams")
     suspend fun getAllSeries(): List<SeriesEntity>
