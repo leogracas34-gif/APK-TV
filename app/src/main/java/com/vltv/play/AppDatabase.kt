@@ -102,6 +102,17 @@ interface StreamDao {
     @Query("SELECT * FROM vod_streams ORDER BY added DESC")
     suspend fun getAllVods(): List<VodEntity>
 
+    // ✅ ADICIONADO: Consulta para VodActivity parar de dar erro
+    @Query("SELECT * FROM vod_streams WHERE category_id = :catId")
+    suspend fun getVodStreamsByCategory(catId: String): List<VodEntity>
+
+    // ✅ ADICIONADO: Consultas para SeriesActivity (Para uso futuro)
+    @Query("SELECT * FROM series_streams")
+    suspend fun getAllSeries(): List<SeriesEntity>
+
+    @Query("SELECT * FROM series_streams WHERE category_id = :catId")
+    suspend fun getSeriesByCategory(catId: String): List<SeriesEntity>
+
     // Limpeza Inteligente (Evita travamentos)
     @Query("DELETE FROM live_streams")
     suspend fun clearLive()
