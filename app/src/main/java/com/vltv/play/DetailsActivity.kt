@@ -12,7 +12,8 @@ import android.view.KeyEvent
 import android.view.LayoutInflater 
 import android.view.View 
 import android.view.ViewGroup 
-import android.widget.* import androidx.appcompat.app.AlertDialog 
+import android.widget.*
+import androidx.appcompat.app.AlertDialog 
 import androidx.appcompat.app.AppCompatActivity 
 import androidx.recyclerview.widget.DiffUtil 
 import androidx.recyclerview.widget.GridLayoutManager 
@@ -26,14 +27,13 @@ import com.bumptech.glide.load.resource.bitmap.CenterCrop
 import androidx.core.view.WindowCompat 
 import androidx.core.view.WindowInsetsCompat 
 import androidx.core.view.WindowInsetsControllerCompat 
-import com.vltv.play.data.AppDatabase // ✅ Importação da Database
-import com.vltv.play.data.StreamDao   // ✅ Importação do DAO
-import okhttp3.* import org.json.JSONObject 
+import com.vltv.play.data.AppDatabase
+import com.vltv.play.data.StreamDao
+import okhttp3.*
+import org.json.JSONObject 
 import java.io.IOException 
 import java.net.URLEncoder 
 import java.util.concurrent.TimeUnit
-import com.vltv.play.CastMember 
-import com.vltv.play.CastAdapter 
 import kotlinx.coroutines.CoroutineScope 
 import kotlinx.coroutines.Dispatchers 
 import kotlinx.coroutines.launch 
@@ -78,10 +78,10 @@ class DetailsActivity : AppCompatActivity() {
     private enum class DownloadState { BAIXAR, BAIXANDO, BAIXADO } 
     private var downloadState: DownloadState = DownloadState.BAIXAR 
 
-    // ✅ Injeção da Database Inteligente
+    // ✅ Injeção da Database
     private lateinit var streamDao: StreamDao
 
-    // ✅ PROTEÇÃO 1 e 2: TIMEOUTS E USER-AGENT (EVITA RECONECTANDO)
+    // ✅ PROTEÇÃO 1 e 2: TIMEOUTS E USER-AGENT
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -102,11 +102,13 @@ class DetailsActivity : AppCompatActivity() {
         streamDao = database.streamDao()
 
         configurarTelaTV() 
+        
         streamId = intent.getIntExtra("stream_id", 0) 
         name = intent.getStringExtra("name") ?: "" 
         icon = intent.getStringExtra("icon") 
         rating = intent.getStringExtra("rating") ?: "0.0" 
         isSeries = intent.getBooleanExtra("is_series", false) 
+        
         inicializarViews() 
         carregarConteudo() 
         setupEventos() 
@@ -145,7 +147,9 @@ class DetailsActivity : AppCompatActivity() {
         recyclerEpisodes = findViewById(R.id.recyclerEpisodes) 
         tvYear = findViewById(R.id.tvYear) 
         btnSettings = findViewById(R.id.btnSettings) 
+        
         if (isTelevisionDevice()) btnDownloadArea.visibility = View.GONE 
+        
         btnPlay.isFocusable = true 
         btnResume.isFocusable = true 
         btnFavorite.isFocusable = true 
@@ -157,24 +161,26 @@ class DetailsActivity : AppCompatActivity() {
         tvPlot.text = "Buscando detalhes..." 
         tvGenre.text = "Gênero: ..." 
         tvCast.text = "Elenco:" 
-        
-        // ✅ Tenta buscar informações básicas no Banco de Dados para carregar instantaneamente
+
+        // ✅ Busca no banco de dados com tratamento de escopo para evitar erro de compilação
         CoroutineScope(Dispatchers.Main).launch {
-            val itemDb = withContext(Dispatchers.IO) {
+            val resultadoBanco = withContext(Dispatchers.IO) {
                 if (isSeries) streamDao.getSeriesById(streamId)
                 else streamDao.getVodById(streamId)
             }
             
-            itemDb?.let { dados ->
-                // Usamos a referência explícita para a variável da classe (this@DetailsActivity.rating)
-                tvRating.text = "⭐ ${dados.rating ?: this@DetailsActivity.rating}"
+            resultadoBanco?.let { item ->
+                val notaParaExibir = item.rating ?: this@DetailsActivity.rating
+                tvRating.text = "⭐ $notaParaExibir"
             }
         }
-
+        
         Glide.with(this).load(icon).diskCacheStrategy(DiskCacheStrategy.ALL).into(imgPoster) 
         Glide.with(this).load(icon).centerCrop().diskCacheStrategy(DiskCacheStrategy.ALL).into(imgBackground) 
+        
         val isFavInicial = getFavMovies(this).contains(streamId) 
         atualizarIconeFavorito(isFavInicial) 
+        
         if (isSeries) carregarEpisodios() else { 
             tvEpisodesTitle.visibility = View.GONE 
             recyclerEpisodes.visibility = View.GONE 
@@ -212,6 +218,7 @@ class DetailsActivity : AppCompatActivity() {
         lixo.forEach { clean = clean.replace(it, "", ignoreCase = true) } 
         val encoded = URLEncoder.encode(clean.replace(Regex("\\s+"), " "), "UTF-8") 
         val url = "https://api.themoviedb.org/3/search/$type?api_key=$apiKey&query=$encoded&language=pt-BR&region=BR" 
+        
         client.newCall(Request.Builder().url(url).build()).enqueue(object : Callback { 
             override fun onFailure(call: Call, e: IOException) { 
                 runOnUiThread { tvTitle.visibility = View.VISIBLE } 
@@ -320,7 +327,7 @@ class DetailsActivity : AppCompatActivity() {
             layoutManager = if (isTelevisionDevice()) GridLayoutManager(this@DetailsActivity, 6) else LinearLayoutManager(this@DetailsActivity, LinearLayoutManager.HORIZONTAL, false) 
             adapter = episodesAdapter 
             setHasFixedSize(true)
-            setItemViewCacheSize(20) // ✅ CACHE ADICIONADO PARA FLUIDEZ
+            setItemViewCacheSize(20)
         } 
     } 
 
@@ -332,17 +339,16 @@ class DetailsActivity : AppCompatActivity() {
     } 
 
     private fun setupEventos() { 
-        // ✅ FOCO NEON + AMARELO + ZOOM 1.15f INTEGRADO AOS BOTÕES
         val focusListener = View.OnFocusChangeListener { v, hasFocus -> 
             if (hasFocus) { 
                 v.setBackgroundResource(R.drawable.bg_focus_neon) 
-                if (v is Button) v.setTextColor(android.graphics.Color.YELLOW) // ✅ AMARELO NO TEXTO DO BOTÃO
+                if (v is Button) v.setTextColor(android.graphics.Color.YELLOW) 
                 v.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150).start() 
                 v.elevation = 25f
             } else { 
                 if (v is Button) {
                     v.setBackgroundResource(R.drawable.bg_button_default) 
-                    v.setTextColor(android.graphics.Color.WHITE) // ✅ VOLTA PARA BRANCO
+                    v.setTextColor(android.graphics.Color.WHITE) 
                 } else {
                     v.setBackgroundResource(0) 
                 }
@@ -447,7 +453,6 @@ class DetailsActivity : AppCompatActivity() {
 
     private fun isTelevisionDevice() = packageManager.hasSystemFeature("android.software.leanback") || packageManager.hasSystemFeature("android.hardware.type.television") 
 
-    // ✅ PROTEÇÃO 3: LIMPEZA DE REDE AO SAIR (EVITA TRAVAMENTO GLOBAL)
     override fun onDestroy() {
         client.dispatcher().cancelAll()
         super.onDestroy()
@@ -465,7 +470,6 @@ class DetailsActivity : AppCompatActivity() {
                 Glide.with(v.context).load(e.thumb).centerCrop().into(v.findViewById(R.id.imgEpisodeThumb)) 
                 v.setOnClickListener { onEpisodeClick(e) } 
 
-                // ✅ FOCO NEON NOS EPISÓDIOS COM ZOOM E AMARELO
                 v.setOnFocusChangeListener { view, hasFocus ->
                     if (hasFocus) {
                         tvTitleEp.setTextColor(android.graphics.Color.YELLOW)
