@@ -165,9 +165,9 @@ class DetailsActivity : AppCompatActivity() {
                 else streamDao.getVodById(streamId)
             }
             
-            itemDb?.let {
-                // Se achou no banco, já atualiza a UI antes mesmo da internet responder
-                tvRating.text = "⭐ ${it.rating ?: rating}"
+            itemDb?.let { dados ->
+                // Usamos "dados.rating" para garantir que pegue o valor do banco
+                tvRating.text = "⭐ ${dados.rating ?: rating}"
             }
         }
 
