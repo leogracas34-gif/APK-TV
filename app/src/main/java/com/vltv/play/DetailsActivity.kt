@@ -166,8 +166,8 @@ class DetailsActivity : AppCompatActivity() {
             }
             
             itemDb?.let { dados ->
-                // Usamos "dados.rating" para garantir que pegue o valor do banco
-                tvRating.text = "⭐ ${dados.rating ?: rating}"
+                // Usamos a referência explícita para a variável da classe (this@DetailsActivity.rating)
+                tvRating.text = "⭐ ${dados.rating ?: this@DetailsActivity.rating}"
             }
         }
 
