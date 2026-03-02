@@ -26,6 +26,8 @@ import com.bumptech.glide.load.resource.bitmap.CenterCrop
 import androidx.core.view.WindowCompat 
 import androidx.core.view.WindowInsetsCompat 
 import androidx.core.view.WindowInsetsControllerCompat 
+import com.vltv.play.data.AppDatabase // ✅ Importação da Database
+import com.vltv.play.data.StreamDao   // ✅ Importação do DAO
 import okhttp3.* import org.json.JSONObject 
 import java.io.IOException 
 import java.net.URLEncoder 
@@ -76,6 +78,9 @@ class DetailsActivity : AppCompatActivity() {
     private enum class DownloadState { BAIXAR, BAIXANDO, BAIXADO } 
     private var downloadState: DownloadState = DownloadState.BAIXAR 
 
+    // ✅ Injeção da Database Inteligente
+    private lateinit var streamDao: StreamDao
+
     // ✅ PROTEÇÃO 1 e 2: TIMEOUTS E USER-AGENT (EVITA RECONECTANDO)
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -91,6 +96,11 @@ class DetailsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { 
         super.onCreate(savedInstanceState) 
         setContentView(R.layout.activity_details) 
+
+        // ✅ Inicializa o banco de dados
+        val database = AppDatabase.getDatabase(this)
+        streamDao = database.streamDao()
+
         configurarTelaTV() 
         streamId = intent.getIntExtra("stream_id", 0) 
         name = intent.getStringExtra("name") ?: "" 
@@ -147,6 +157,20 @@ class DetailsActivity : AppCompatActivity() {
         tvPlot.text = "Buscando detalhes..." 
         tvGenre.text = "Gênero: ..." 
         tvCast.text = "Elenco:" 
+        
+        // ✅ Tenta buscar informações básicas no Banco de Dados para carregar instantaneamente
+        CoroutineScope(Dispatchers.Main).launch {
+            val itemDb = withContext(Dispatchers.IO) {
+                if (isSeries) streamDao.getSeriesById(streamId)
+                else streamDao.getVodById(streamId)
+            }
+            
+            itemDb?.let {
+                // Se achou no banco, já atualiza a UI antes mesmo da internet responder
+                tvRating.text = "⭐ ${it.rating ?: rating}"
+            }
+        }
+
         Glide.with(this).load(icon).diskCacheStrategy(DiskCacheStrategy.ALL).into(imgPoster) 
         Glide.with(this).load(icon).centerCrop().diskCacheStrategy(DiskCacheStrategy.ALL).into(imgBackground) 
         val isFavInicial = getFavMovies(this).contains(streamId) 
